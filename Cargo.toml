@@ -3,10 +3,10 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 byondapi = "0.4.11"
-coarsetime = "0.1.34"
+coarsetime = "0.1.35"
 flume = "0.11.1"
 eyre = "0.6.12"
-tracing = "0.1.40"
+tracing = "0.1.41"
 
 [package]
 name = "auxmos"
@@ -41,27 +41,27 @@ coarsetime = { workspace = true }
 eyre = { workspace = true }
 auxcallback = { path = "./crates/auxcallback" }
 auxmacros = { path = "./crates/auxmacros" }
-itertools = "0.13.0"
+itertools = "0.14.0"
 rayon = "1.10.0"
 float-ord = "0.3.2"
 parking_lot = "0.12.3"
-rustc-hash = "2.0.0"
+rustc-hash = "2.1.0"
 ahash = "0.8.11"
-indexmap = { version = "2.6.0", features = ["rayon"] }
+indexmap = { version = "2.5.0", features = ["rayon"] }
 dashmap = { version = "6.1.0", features = ["rayon"] }
-hashbrown = "0.15.0"
+hashbrown = "0.15.2"
 atomic_float = "1.1.0"
-petgraph = "0.6.5"
+petgraph = "0.7.0"
 bitflags = "2.6.0"
 nom = "7.1.3"
 mimalloc = { version = "0.1.43", default-features = false }
 
-tracing = { version = "0.1.40", optional = true }
-tracing-tracy = { version = "0.11.3", optional = true }
-tracing-subscriber = { version = "0.3.18", optional = true }
+tracing = { version = "0.1.41", optional = true }
+tracing-tracy = { version = "0.11.4", optional = true }
+tracing-subscriber = { version = "0.3.19", optional = true }
 
 [dependencies.tinyvec]
-version = "1.8.0"
+version = "1.8.1"
 features = ["rustc_1_61", "alloc"]
 
 [profile.release]
