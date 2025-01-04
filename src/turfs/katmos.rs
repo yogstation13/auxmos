@@ -505,13 +505,20 @@ fn explosively_depressurize(initial_index: TurfID, equalize_hard_turf_limit: usi
 	Ok(())
 }
 
+enum FloodFillResult {
+	ZoneIgnored,
+	Overtime,
+	Complete(DiGraphMap<NodeIndex, Cell<f32>>, f32),
+}
+
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
 fn flood_fill_zones(
 	(index_node, index_turf): (NodeIndex, TurfID),
 	equalize_hard_turf_limit: usize,
 	found_turfs: &mut HashSet<TurfID, FxBuildHasher>,
 	arena: &TurfGases,
-) -> Option<(DiGraphMap<NodeIndex, Cell<f32>>, f32)> {
+	(start_time, remaining_time): (&Instant, Duration),
+) -> FloodFillResult {
 	let mut turf_graph: DiGraphMap<NodeIndex, Cell<f32>> = Default::default();
 	let mut border_turfs: std::collections::VecDeque<NodeIndex> = Default::default();
 	let sender = byond_callback_sender();
@@ -532,6 +539,11 @@ fn flood_fill_zones(
 			break;
 		}
 		total_moles += cur_turf.total_moles();
+
+		//we are already overtime, bail NOW
+		if start_time.elapsed() >= remaining_time {
+			return FloodFillResult::Overtime;
+		}
 
 		for (weight, adj_index, adj_mixture) in arena
 			.graph
@@ -572,7 +584,11 @@ fn flood_fill_zones(
 			}
 		}
 	}
-	(!ignore_zone).then_some((turf_graph, total_moles))
+	if !ignore_zone {
+		FloodFillResult::Complete(turf_graph, total_moles)
+	} else {
+		FloodFillResult::ZoneIgnored
+	}
 }
 
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
@@ -765,47 +781,54 @@ fn equalize(
 	let turfs_processed: AtomicUsize = AtomicUsize::new(0);
 	let is_cancelled = with_turf_gases_read(|arena| {
 		let mut found_turfs: HashSet<TurfID, FxBuildHasher> = Default::default();
-		let zoned_turfs = high_pressure_turfs
-			.iter()
-			.filter_map(|&cur_index_turf| {
-				//is this turf already visited?
-				if found_turfs.contains(&cur_index_turf) {
-					return None;
-				};
+		let mut zoned_turfs = vec![];
+		for &cur_index_turf in high_pressure_turfs {
+			//is this turf already visited?
+			if found_turfs.contains(&cur_index_turf) {
+				continue;
+			};
 
-				//does this turf exists/enabled/have adjacencies?
-				let cur_mixture = arena.get_from_id(cur_index_turf)?;
-				let cur_index_node = arena.get_id(cur_index_turf)?;
-				if !cur_mixture.enabled()
-					|| arena.adjacent_node_ids(cur_index_node).next().is_none()
-				{
-					return None;
+			//does this turf exists/enabled/have adjacencies?
+			let Some(cur_mixture) = arena.get_from_id(cur_index_turf) else {
+				continue;
+			};
+			let Some(cur_index_node) = arena.get_id(cur_index_turf) else {
+				continue;
+			};
+			if !cur_mixture.enabled() || arena.adjacent_node_ids(cur_index_node).next().is_none() {
+				continue;
+			}
+
+			let is_unshareable = GasArena::with_all_mixtures(|all_mixtures| {
+				let our_moles = all_mixtures[cur_mixture.mix].read().total_moles();
+				our_moles < 10.0
+					|| arena
+						.adjacent_mixes(cur_index_node, all_mixtures)
+						.all(|lock| {
+							(lock.read().total_moles() - our_moles).abs()
+								< MINIMUM_MOLES_DELTA_TO_MOVE
+						})
+			});
+
+			//does this turf or its adjacencies have enough moles to share?
+			if is_unshareable {
+				continue;
+			}
+
+			match flood_fill_zones(
+				(cur_index_node, cur_index_turf),
+				equalize_hard_turf_limit,
+				&mut found_turfs,
+				arena,
+				(start_time, remaining_time),
+			) {
+				FloodFillResult::Complete(zone, num) => {
+					zoned_turfs.push((zone, num));
 				}
-
-				let is_unshareable = GasArena::with_all_mixtures(|all_mixtures| {
-					let our_moles = all_mixtures[cur_mixture.mix].read().total_moles();
-					our_moles < 10.0
-						|| arena
-							.adjacent_mixes(cur_index_node, all_mixtures)
-							.all(|lock| {
-								(lock.read().total_moles() - our_moles).abs()
-									< MINIMUM_MOLES_DELTA_TO_MOVE
-							})
-				});
-
-				//does this turf or its adjacencies have enough moles to share?
-				if is_unshareable {
-					return None;
-				}
-
-				flood_fill_zones(
-					(cur_index_node, cur_index_turf),
-					equalize_hard_turf_limit,
-					&mut found_turfs,
-					arena,
-				)
-			})
-			.collect::<Vec<_>>();
+				FloodFillResult::Overtime => return true,
+				FloodFillResult::ZoneIgnored => (),
+			}
+		}
 
 		if start_time.elapsed() >= remaining_time {
 			return true;
