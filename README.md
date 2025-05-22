@@ -1,3 +1,7 @@
+## Yogstation13 is shutting down
+> [!WARNING]
+Yogstation13 will be permanently shutting down on the 30th of April 2025. See https://forums.yogstation.net/shutdown/ for more information.
+
 Rust-based atmospherics for Space Station 13 using [byondapi](https://github.com/spacestation13/byondapi-rs).
 
 The compiled binary on Citadel is compiled for Citadel's CPU, which therefore means that it uses [AVX2 fused-multiply-accumulate](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#Advanced_Vector_Extensions_2).
